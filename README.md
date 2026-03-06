@@ -1,5 +1,13 @@
-# Global Layoffs Data Analysis | Data Cleaning & Exploratory Analysis with SQL
+# Global Layoffs Data Analysis (2020-2023) | Data Cleaning & Exploratory Analysis with SQL
 SQL Project | Global Layoffs Dataset | From Raw Data to Workforce Insights
+
+## Table of Contents
+
+-  [Project Overview](#project-overview)
+-  [Tools & Technologies](#tools--technologies)
+-  [Dataset Overview](#dataset-overview)
+-  [Data Cleaning Process](#data-cleaning-process)
+-  [Key Insights](#key-insights)
 
 ---
 
@@ -214,8 +222,110 @@ ALTER TABLE layoffs_staging2
 DROP COLUMN row_num;
 ```
 
+---
 
+### Exploratory Data Analysis (EDA)
+1. Largest layoffs at once.
+```sql
+SELECT MAX(total_laid_off), MAX(percentage_laid_off)
+FROM layoffs_staging2;
+```
+2. Companies with 100% Workforce Layoffs
+```sql
+SELECT *
+FROM layoffs_staging2
+WHERE percentage_laid_off = 1
+ORDER BY total_laid_off DESC;
+```
+3. Total Layoffs by each Company
+```sql
+SELECT company, SUM(total_laid_off)
+FROM layoffs_staging2
+GROUP BY company
+ORDER BY 2 DESC;
+```
 
+4. Total Layoffs by each Industry
+```sql
+SELECT industry, SUM(total_laid_off)
+FROM layoffs_staging2
+GROUP BY industry
+ORDER BY 2 DESC;
+```
+5. Total Layoffs by each Country
+```sql
+SELECT country, SUM(total_laid_off)
+FROM layoffs_staging2
+GROUP BY country
+ORDER BY 2 DESC;
+```
+6. Yearly Layoff Trends
+```sql
+SELECT YEAR(`date`), SUM(total_laid_off)
+FROM layoffs_staging2
+GROUP BY YEAR(`date`)
+ORDER BY 1 DESC;
+```
+7. Prgoression of Layoffs overtime
+```sql
+WITH ROLLING_TOTAL AS
+(
+SELECT SUBSTRING(`date`, 1 , 7) `MONTH`, SUM(total_laid_off) TOTAL_LAID_OFF
+FROM layoffs_staging2
+WHERE SUBSTRING(`date`, 1 , 7) IS NOT NULL
+GROUP BY `MONTH`
+ORDER BY 1 ASC
+)
+SELECT `MONTH`, TOTAL_LAID_OFF,
+SUM(TOTAL_LAID_OFF) OVER(ORDER BY `MONTH`) ROLLING
+FROM ROLLING_TOTAL;
+```
+8. Top Companies by Layoffs Per Year
+```sql
+WITH COMPANY_YEAR AS
+(
+SELECT company, YEAR(`date`) YEARS, SUM(total_laid_off) TOTAL_LAID
+FROM layoffs_staging2
+GROUP BY company, YEAR(`date`)
+ORDER BY company ASC
+), COMPANY_YEAR_RANK AS
+(
+SELECT *, DENSE_RANK() OVER(PARTITION BY YEARS ORDER BY TOTAL_LAID DESC) RANKINGS
+FROM COMPANY_YEAR
+WHERE YEARS IS NOT NULL
+)
+SELECT *
+FROM COMPANY_YEAR_RANK
+WHERE RANKINGS <=5;
+```
+9. Top Industries by Layoffs Per Year
+```sql
+WITH INDUSTRY_YEAR AS
+(
+SELECT industry, YEAR(`date`) YEARS, SUM(total_laid_off) TOTAL_LAID
+FROM layoffs_staging2
+GROUP BY industry, YEAR(`date`)
+ORDER BY industry ASC
+), INDUSTRY_YEAR_RANK AS
+(
+SELECT *, DENSE_RANK() OVER(PARTITION BY YEARS ORDER BY TOTAL_LAID DESC) RANKINGS
+FROM INDUSTRY_YEAR
+WHERE YEARS IS NOT NULL
+)
+SELECT *
+FROM INDUSTRY_YEAR_RANK
+WHERE RANKINGS <=5;
+```
 
+---
 
+### Key Insights
+1. Some companies executed 100% workforce layoffs, indicating complete shutdowns or restructuring.
+2. Layoffs fluctuated sharply from 2020 to 2023, surging from 15,823 in 2021 to 160,661 in 2022 which is a tenfold increase before easing to 125,677 in 2023, highlighting volatility likely driven by post-pandemic adjustments.
+3. Layoffs were highest in Consumer (45,182), Retail (43,613), and Transportation (33,748), while niche sectors like Manufacturing (20) and Fin-Tech (215) saw minimal impact, showing wide industry disparities.
+4. A small number of large companies including but not limited to Amazon, Google, and Meta accounted for a large portion of total layoffs.
 
+---
+
+Dataset source:
+[Download Here](https://www.kaggle.com/datasets/manjunathtl/layoffs)
