@@ -61,29 +61,158 @@ FROM layoffs;
 
 2. Identified and Removed Duplicate Records
 - Duplicate rows were detected using the ROW_NUMBER() window function with PARTITION BY across multiple columns.
+```sql
+-- CHECK THE DUPLICATES
+WITH duplicate_cte AS
+(
+SELECT *,
+ROW_NUMBER() OVER(PARTITION BY 
+company, location, industry, total_laid_off, percentage_laid_off, `date`, stage, country,
+funds_raised_millions ) row_num
+FROM layoffs_staging
+)
+SELECT *
+FROM duplicate_cte
+WHERE row_num > 1;
+
+-- CHECK IF THEY ARE REALLY DUPLICATES
+SELECT *
+FROM layoffs_staging
+WHERE COMPANY = 'Casper';
+
+```
 - Duplicates were then removed by:
 	- Creating a new table containing a row_num column
 	- Deleting records where row_num is greater than 1
+```sql
+CREATE TABLE `layoffs_staging2` (
+  `company` text,
+  `location` text,
+  `industry` text,
+  `total_laid_off` int DEFAULT NULL,
+  `percentage_laid_off` text,
+  `date` text,
+  `stage` text,
+  `country` text,
+  `funds_raised_millions` int DEFAULT NULL,
+  `row_num` INT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+INSERT INTO layoffs_staging2
+SELECT *,
+ROW_NUMBER() OVER(PARTITION BY 
+company, location, industry, total_laid_off, percentage_laid_off, `date`, stage, country,
+funds_raised_millions ) row_num
+FROM layoffs_staging;
+
+```
+	
+```sql
+-- Deleting records where row_num is greater than 1
+DELETE
+FROM layoffs_staging2
+WHERE row_num > 1;
+```
+ 
 3. Standardized Text Data
 - Several fields contained inconsistent formatting.
 - Cleaning steps included:
 	- Trimming extra spaces from company names
 	- Standardizing industry names (e.g., grouping variations of Crypto into a single category)
 	- Removing punctuation inconsistencies in country names
+ ```sql
+SELECT company, TRIM(company)
+FROM layoffs_staging2;
+
+UPDATE layoffs_staging2
+SET company = TRIM(company);
+```
+```sql
+-- CHECK EVERY INDUSTRY IF THERE IS SOMETHING WRONG OR DIFFERENT WHEN THEY SHOULD BE THE SAME
+-- USE THIS FOR EVERY COLUMN
+SELECT DISTINCT industry
+FROM layoffs_staging2
+ORDER BY 1;
+
+SELECT *
+FROM layoffs_staging2
+WHERE industry LIKE 'Crypto%';
+
+-- UPDATE ALL THE CRYPTO VARIANT TO JUST CRYPTO
+-- DO THE SAME FOR EVERY COLUMN WHEN THERE ARE MULTIPLE VARIANTS
+UPDATE layoffs_staging2
+SET industry = 'Crypto'
+WHERE industry LIKE 'Crypto%';
+```
+
+```sql
+-- TRIM THE PERIOD THAT WAS AT THE END OF A COUNTRY NAME
+SELECT DISTINCT country, TRIM(TRAILING '.' FROM country)
+FROM layoffs_staging2
+ORDER BY 1;
+
+UPDATE layoffs_staging2
+SET country = TRIM(TRAILING '.' FROM country)
+WHERE country LIKE 'United States%';
+
+```
 4. Standardized Date Format
 - The original dataset stored dates as text.
 - To improve usability:
 	- Dates were converted using STR_TO_DATE()
 	- The column data type was updated to DATE
 - This allowed accurate time-based analysis.
+```sql
+SELECT `date`,
+STR_TO_DATE(`date`, '%m/%d/%Y')
+FROM layoffs_staging2;
+
+-- UPDATE DATE FORMAT
+UPDATE layoffs_staging2
+SET `date` = STR_TO_DATE(`date`, '%m/%d/%Y');
+```
+
 5. Handled Missing Values
 - Missing values were investigated across multiple columns.
 - When possible:
 	- Missing industry values were populated using data from other rows belonging to the same company and location.
-6. Removed Irrelevant Rows
-- Rows where both total_laid_off and percentage_laid_off were NULL were removed since they did not provide meaningful information for analysis.
-7. Dropped Temporary Columns
+```sql
+-- CHECK EVERY COLUMN FOR MISSING OR NULL VALUES
+SELECT *
+FROM layoffs_staging2
+WHERE total_laid_off IS NULL
+AND percentage_laid_off IS NULL;
+
+SELECT *
+FROM layoffs_staging2
+WHERE industry IS NULL
+OR industry = '';
+
+-- CHECK IF ONE OF THE MISSING VALUES CAN BE POPULATED BY CHECKING THE SAME COMPANY FOR EACH INDUSTRY
+SELECT *
+FROM layoffs_staging2
+WHERE company = 'Airbnb';
+
+-- CHANGE THE MISSING VALUE TO NULL BEFORE UPDATING
+UPDATE layoffs_staging2
+SET industry = NULL
+WHERE industry = '';
+
+-- POPULATE THE MISSING VALUE
+UPDATE layoffs_staging2 T1
+JOIN layoffs_staging2 T2
+	ON T1.company = T2.company
+    AND T1.location = T2.location
+SET T1.industry = T2.industry
+WHERE (T1.industry IS NULL)
+AND T2.industry IS NOT NULL;
+```
+6. Dropped Temporary Columns
 - Temporary columns such as row_num used for duplicate detection were removed after the cleaning process.
+```sql
+ALTER TABLE layoffs_staging2
+DROP COLUMN row_num;
+```
 
 
 
